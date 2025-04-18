@@ -1,0 +1,3 @@
+# ForsaMarket
+
+> Scaffold généré automatiquement.

@@ -1,0 +1,12 @@
+{
+  "name": "forsamarket-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "lint": "eslint . --fix"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}
