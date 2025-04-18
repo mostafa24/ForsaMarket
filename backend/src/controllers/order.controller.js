@@ -14,6 +14,9 @@ export async function getOrder(req, res) {
   res.json(order);
 }
 
+
+
+
 export async function createOrder(req, res) {
   const o = await Order.create(req.body);
   res.status(201).json(o);
@@ -61,3 +64,16 @@ export async function importCSV(req, res) {
       res.json({ imported: results.length });
     });
 }
+
+export async function listPendingOrders(req, res) {
+  try {
+    const pendingOrders = await Order.findAll({
+      where: { confirmationStatus: 'Pending' },
+      order: [['orderDate', 'DESC']],
+    });
+    res.json(pendingOrders);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la récupération des commandes en attente.' });
+  }
+}
+

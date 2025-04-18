@@ -1,91 +1,178 @@
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+import axiosClient from '../api/axiosClient';
 import { FaEdit, FaSave } from 'react-icons/fa';
-
-const initialOrders = [];
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import * as XLSX from 'xlsx';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState(initialOrders);
-  const [search, setSearch] = useState('');
+  const [orders, setOrders] = useState([]);
+  const [editedOrders, setEditedOrders] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [editedOrder, setEditedOrder] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  // 🔍 الفلترة النهائية
-  const filteredOrders = orders.filter((order) =>
-    (order.customer.toLowerCase().includes(search.toLowerCase()) ||
-      order.phone.includes(search)) &&
-    (cityFilter === '' || order.city === cityFilter) &&
-    (statusFilter === '' || order.status === statusFilter)
-  );
+  useEffect(() => {
+    fetchOrders();
+  }, []);
 
-  // 📥 إدخال ملف CSV/Excel
-  const handleFileUpload = (e) => {
+  const fetchOrders = async () => {
+    try {
+      const res = await axiosClient.get('/orders');
+      setOrders(res.data);
+    } catch (err) {
+      toast.error('Erreur lors du chargement des commandes');
+    }
+  };
+
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target.result;
       const workbook = XLSX.read(bstr, { type: 'binary' });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(sheet);
-      setOrders(data);
+
+      for (let d of data) {
+        await axiosClient.post('/orders', {
+          orderNumber: d.orderNumber || `CMD-${Date.now()}`,
+          orderDate: new Date(),
+          customerName: d.customerName,
+          phone: d.phone,
+          city: d.city,
+          address: d.address || '',
+          productName: d.productName,
+          quantity: d.quantity,
+          price: d.price,
+          confirmationStatus: d.confirmationStatus || 'Pending',
+          deliveryStatus: 'Pending',
+          notes: d.notes || ''
+        });
+      }
+      fetchOrders();
+      toast.success('Importation réussie');
     };
     reader.readAsBinaryString(file);
   };
 
-  // ✏️ بدء التعديل
-  const handleEdit = (index) => {
-    setEditingIndex(index);
-    setEditedOrder({ ...orders[index] });
+  const handleEditChange = (id, key, value) => {
+    setEditedOrders((prev) => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [key]: value,
+      },
+    }));
   };
 
-  // 💾 حفظ التعديلات
-  const handleSave = () => {
-    const updated = [...orders];
-    updated[editingIndex] = editedOrder;
-    setOrders(updated);
-    setEditingIndex(null);
-    setEditedOrder({});
+  const handleSave = async (id) => {
+    try {
+      const updated = editedOrders[id];
+      await axiosClient.put(`/orders/${id}`, updated);
+      toast.success('Commande mise à jour');
+      fetchOrders();
+      setEditedOrders((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+    } catch (err) {
+      toast.error("Échec de l'enregistrement");
+    }
   };
+
+  const handleSaveAll = async () => {
+    const updates = Object.entries(editedOrders);
+    try {
+      for (let [id, data] of updates) {
+        await axiosClient.put(`/orders/${id}`, data);
+      }
+      toast.success('Toutes les modifications sont enregistrées');
+      setEditedOrders({});
+      fetchOrders();
+    } catch (err) {
+      toast.error("Une erreur s'est produite lors de l'enregistrement groupé");
+    }
+  };
+
+  const filteredOrders = orders.filter(
+    (o) =>
+      (o.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        o.phone?.includes(searchQuery)) &&
+      (cityFilter === '' || o.city === cityFilter) &&
+      (statusFilter === '' || o.confirmationStatus === statusFilter)
+  );
+
+  const start = (currentPage - 1) * itemsPerPage;
+  const paginatedOrders = filteredOrders.slice(start, start + itemsPerPage);
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">Gestion des commandes</h2>
+      <ToastContainer position="top-right" autoClose={2000} hideProgressBar newestOnTop />
 
-      {/* ✅ فلترة و بحث */}
-      <div className="flex flex-wrap gap-4 items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Gestion des commandes</h2>
+        <button
+          onClick={handleSaveAll}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+        >
+          💾 Sauvegarder tout
+        </button>
+      </div>
+
+      <div className="flex gap-4 mb-4 items-center flex-wrap">
         <input
           type="text"
+          className="border px-3 py-2 rounded w-64"
           placeholder="Recherche..."
-          className="border px-4 py-2 rounded w-64"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
         />
         <select
+          className="border px-3 py-2 rounded"
           value={cityFilter}
           onChange={(e) => setCityFilter(e.target.value)}
-          className="border px-4 py-2 rounded"
         >
           <option value="">Toutes les villes</option>
-          {[...new Set(orders.map((o) => o.city))].map((city, idx) => (
-            <option key={idx} value={city}>{city}</option>
+          {[...new Set(orders.map((o) => o.city))].map((city, i) => (
+            <option key={i} value={city}>{city}</option>
           ))}
         </select>
         <select
+          className="border px-3 py-2 rounded"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border px-4 py-2 rounded"
         >
           <option value="">Tous statuts</option>
-          <option value="Confirmé">Confirmé</option>
-          <option value="En attente">En attente</option>
-          <option value="Annulé">Annulé</option>
+          <option value="Pending">En attente</option>
+          <option value="Confirmed">Confirmé</option>
+          <option value="Cancelled">Annulé</option>
+        </select>
+
+
+
+        
+        <input
+          type="file"
+          accept=".xlsx, .csv"
+          onChange={handleFileUpload}
+          className="border px-3 py-2 rounded"
+        />
+        <select
+          value={itemsPerPage}
+          onChange={(e) => setItemsPerPage(parseInt(e.target.value))}
+          className="border px-3 py-2 rounded"
+        >
+          {[5, 10, 20, 50].map((n) => (
+            <option key={n} value={n}>{n} / page</option>
+          ))}
         </select>
       </div>
 
-      {/* ✅ Tableau */}
       <div className="overflow-x-auto bg-white shadow rounded">
         <table className="min-w-full text-sm text-left">
           <thead className="bg-gray-100 text-gray-700 uppercase">
@@ -102,70 +189,101 @@ export default function OrdersPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.map((order, index) => (
-              <tr key={index} className="border-b hover:bg-gray-50">
-                <td className="px-4 py-2">{order.numero}</td>
+            {paginatedOrders.map((order) => (
+              <tr key={order.id} className="border-b hover:bg-gray-50">
+                <td className="px-4 py-2">{order.orderNumber}</td>
                 <td className="px-4 py-2">
-                  {editingIndex === index ? (
-                    <input
-                      value={editedOrder.customer}
-                      onChange={(e) =>
-                        setEditedOrder({ ...editedOrder, customer: e.target.value })
-                      }
-                      className="border px-2 py-1 rounded w-full"
-                    />
-                  ) : (
-                    order.customer
-                  )}
+                  <input
+                    value={editedOrders[order.id]?.customerName || order.customerName}
+                    onChange={(e) => handleEditChange(order.id, 'customerName', e.target.value)}
+                    className="border px-2 py-1 rounded w-full"
+                  />
                 </td>
-                <td className="px-4 py-2">{order.phone}</td>
-                <td className="px-4 py-2">{order.city}</td>
-                <td className="px-4 py-2">{order.product}</td>
-                <td className="px-4 py-2">{order.quantity}</td>
-                <td className="px-4 py-2">{order.price}</td>
-                <td className="px-4 py-2">{order.status}</td>
                 <td className="px-4 py-2">
-                  {editingIndex === index ? (
-                    <button
-                      className="text-green-600"
-                      onClick={handleSave}
-                      title="Save"
-                    >
-                      <FaSave />
-                    </button>
-                  ) : (
-                    <button
-                      className="text-blue-600"
-                      onClick={() => handleEdit(index)}
-                      title="Edit"
-                    >
-                      <FaEdit />
-                    </button>
-                  )}
+                  <input
+                    value={editedOrders[order.id]?.phone || order.phone}
+                    onChange={(e) => handleEditChange(order.id, 'phone', e.target.value)}
+                    className="border px-2 py-1 rounded w-full"
+                  />
+                </td>
+                <td className="px-4 py-2">
+                  <input
+                    value={editedOrders[order.id]?.city || order.city}
+                    onChange={(e) => handleEditChange(order.id, 'city', e.target.value)}
+                    className="border px-2 py-1 rounded w-full"
+                  />
+                </td>
+                <td className="px-4 py-2">
+                  <input
+                    value={editedOrders[order.id]?.productName || order.productName}
+                    onChange={(e) => handleEditChange(order.id, 'productName', e.target.value)}
+                    className="border px-2 py-1 rounded w-full"
+                  />
+                </td>
+                <td className="px-4 py-2">
+                  <input
+                    type="number"
+                    value={editedOrders[order.id]?.quantity || order.quantity}
+                    onChange={(e) => handleEditChange(order.id, 'quantity', parseInt(e.target.value))}
+                    className="border px-2 py-1 rounded w-full"
+                  />
+                </td>
+                <td className="px-4 py-2">
+                  <input
+                    type="number"
+                    value={editedOrders[order.id]?.price || order.price}
+                    onChange={(e) => handleEditChange(order.id, 'price', parseFloat(e.target.value))}
+                    className="border px-2 py-1 rounded w-full"
+                  />
+                </td>
+                <td className="px-4 py-2">
+                  <select
+                    value={editedOrders[order.id]?.confirmationStatus || order.confirmationStatus}
+                    onChange={(e) => handleEditChange(order.id, 'confirmationStatus', e.target.value)}
+                    className="border px-2 py-1 rounded w-full"
+                  >
+                    <option value="Pending">En attente</option>
+                    <option value="Confirmed">Confirmé</option>
+                    <option value="Cancelled">Annulé</option>
+                  </select>
+                </td>
+                <td className="px-4 py-2 text-center">
+                  <button
+                    className="text-blue-600 hover:text-blue-800"
+                    onClick={() => handleSave(order.id)}
+                  >
+                    <FaSave />
+                  </button>
                 </td>
               </tr>
             ))}
-            {filteredOrders.length === 0 && (
-              <tr>
-                <td colSpan="9" className="px-4 py-4 text-center text-gray-500">
-                  Aucune commande trouvée
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
-      {/* ✅ Upload Excel */}
-      <div className="mt-6">
-        <h3 className="font-semibold mb-2">Importer CSV</h3>
-        <input
-          type="file"
-          accept=".xlsx, .csv"
-          onChange={handleFileUpload}
-          className="border px-4 py-2 rounded"
-        />
+      {/* ✅ Pagination */}
+      <div className="flex justify-between mt-4 items-center">
+        <div>
+          Page {currentPage} / {totalPages}
+        </div>
+        <div className="space-x-2">
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            className="px-3 py-1 bg-gray-200 rounded"
+            disabled={currentPage === 1}
+          >
+            ⬅️ Précédent
+          </button>
+          <button
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            className="px-3 py-1 bg-gray-200 rounded"
+            disabled={currentPage === totalPages}
+          >
+            Suivant ➡️
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+

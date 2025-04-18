@@ -13,5 +13,6 @@ r.delete('/:id', orderCtrl.deleteOrder);
 
 // import CSV
 r.post('/import', upload.single('file'), orderCtrl.importCSV);
+r.get('/pending', orderCtrl.listPendingOrders); // 🆕
 
 export default r;
