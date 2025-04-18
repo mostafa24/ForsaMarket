@@ -1,5 +1,37 @@
-node_modules/
-.env*
-build/
-dist/
+# 📁 Node.js backend
+/backend/node_modules
+/backend/.env
+/backend/.DS_Store
+/backend/coverage
+/backend/dist
+/backend/logs
+/backend/debug.log
+
+# 📁 React frontend
+/frontend/node_modules
+/frontend/.DS_Store
+/frontend/.env
+/frontend/dist
+/frontend/build
+/frontend/.vite
+
+# 🔒 System files
 *.log
+*.lock
+*.sqlite
+*.bak
+.DS_Store
+Thumbs.db
+
+# 🧪 Tests / coverage
+coverage
+*.test.js
+
+# 📁 IDEs
+.vscode
+.idea
+*.swp
+
+# 📦 Build artifacts
+*.zip
+*.tar.gz
